@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"netcheck/lib"
 	"os"
 
 	"github.com/urfave/cli/v3"
@@ -54,7 +55,7 @@ func GetDefaultInterface(includeIPv6 bool) (*DefaultInterface, error) {
 	return nil, fmt.Errorf("no default interface found")
 }
 
-func localAddresses(showIPv6 bool) {
+func localAddresses(showIPv6 bool, showVirtual bool) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		fmt.Print(fmt.Errorf("localAddresses: %+v", err.Error()))
@@ -79,6 +80,7 @@ func localAddresses(showIPv6 bool) {
 		}
 
 		for _, a := range addrs {
+
 			if !showIPv6 {
 				if ipnet, ok := a.(*net.IPNet); ok && ipnet.IP.To4() == nil {
 					continue
@@ -91,8 +93,21 @@ func localAddresses(showIPv6 bool) {
 				defaultInterfaceIndex = len(rows)
 			}
 
+			if !showVirtual && !isDefaultInterface {
+				if lib.IsLikelyVirtual(i.Name) {
+					continue
+				}
+			}
+
+			interfaceName := i.Name
+
+
+			if !showVirtual && lib.IsLikelyVirtual(i.Name) {
+				interfaceName = fmt.Sprintf("%s (virtual)", i.Name)
+			}
+
 			rows = append(rows, []string{
-				i.Name,
+				interfaceName,
 				a.String(),
 				i.HardwareAddr.String(),
 			})
@@ -135,6 +150,8 @@ func localAddresses(showIPv6 bool) {
 
 func main() {
 	cmd := &cli.Command{
+		Name:                   "netcheck",
+		Version:                "0.0.1",
 		UseShortOptionHandling: true,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
@@ -143,9 +160,15 @@ func main() {
 				Aliases: []string{"6"},
 				Value:   false,
 			},
+			&cli.BoolFlag{
+				Name:    "virtual",
+				Usage:   "Show virtual interfaces",
+				Aliases: []string{"x"},
+				Value:   false,
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			localAddresses(cmd.Bool("ipv6"))
+			localAddresses(cmd.Bool("ipv6"), cmd.Bool("virtual"))
 			return nil
 		},
 	}
