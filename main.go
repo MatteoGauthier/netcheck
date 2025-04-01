@@ -7,7 +7,10 @@ import (
 	"netcheck/lib"
 	"os"
 
+	"github.com/jackpal/gateway"
 	"github.com/urfave/cli/v3"
+
+	netmon "tailscale.com/net/netmon"
 
 	"net"
 
@@ -15,44 +18,13 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
-type DefaultInterface struct {
-	Name       string
-	IPAddress  string
-	MACAddress string
-}
-
-func GetDefaultInterface(includeIPv6 bool) (*DefaultInterface, error) {
-	ifaces, err := net.Interfaces()
+func GetDefaultInterface(includeIPv6 bool) (string, error) {
+	defaultInterface, err := netmon.DefaultRouteInterface()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get interfaces: %w", err)
+		return "", fmt.Errorf("failed to get default interface: %w", err)
 	}
 
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
-			continue
-		}
-
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-
-		for _, addr := range addrs {
-			if !includeIPv6 {
-				if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() == nil {
-					continue
-				}
-			}
-
-			return &DefaultInterface{
-				Name:       iface.Name,
-				IPAddress:  addr.String(),
-				MACAddress: iface.HardwareAddr.String(),
-			}, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no default interface found")
+	return defaultInterface, nil
 }
 
 func localAddresses(showIPv6 bool, showVirtual bool) {
@@ -87,7 +59,7 @@ func localAddresses(showIPv6 bool, showVirtual bool) {
 				}
 			}
 
-			isDefaultInterface := i.Name == defaultInterface.Name
+			isDefaultInterface := i.Name == defaultInterface
 
 			if isDefaultInterface {
 				defaultInterfaceIndex = len(rows)
@@ -100,7 +72,6 @@ func localAddresses(showIPv6 bool, showVirtual bool) {
 			}
 
 			interfaceName := i.Name
-
 
 			if !showVirtual && lib.IsLikelyVirtual(i.Name) {
 				interfaceName = fmt.Sprintf("%s (virtual)", i.Name)
@@ -148,6 +119,20 @@ func localAddresses(showIPv6 bool, showVirtual bool) {
 
 }
 
+func printGateway() {
+	gw, err := gateway.DiscoverGateway()
+	if err != nil {
+		fmt.Println(fmt.Errorf("gateway error: %w", err))
+		return
+	}
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1).
+		Align(lipgloss.Center)
+	fmt.Println(boxStyle.Render("Gateway: " + gw.String()))
+}
+
 func main() {
 	cmd := &cli.Command{
 		Name:                   "netcheck",
@@ -169,6 +154,7 @@ func main() {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			localAddresses(cmd.Bool("ipv6"), cmd.Bool("virtual"))
+			printGateway()
 			return nil
 		},
 	}
