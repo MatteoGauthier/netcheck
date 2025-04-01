@@ -14,6 +14,46 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
+type DefaultInterface struct {
+	Name       string
+	IPAddress  string
+	MACAddress string
+}
+
+func GetDefaultInterface(includeIPv6 bool) (*DefaultInterface, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interfaces: %w", err)
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		for _, addr := range addrs {
+			if !includeIPv6 {
+				if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() == nil {
+					continue
+				}
+			}
+
+			return &DefaultInterface{
+				Name:       iface.Name,
+				IPAddress:  addr.String(),
+				MACAddress: iface.HardwareAddr.String(),
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no default interface found")
+}
+
 func localAddresses(showIPv6 bool) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -21,7 +61,15 @@ func localAddresses(showIPv6 bool) {
 		return
 	}
 
+	defaultInterface, err := GetDefaultInterface(showIPv6)
+	if err != nil {
+		fmt.Print(fmt.Errorf("localAddresses: %+v", err.Error()))
+		return
+	}
+
 	var rows [][]string
+
+	var defaultInterfaceIndex int
 
 	for _, i := range ifaces {
 		addrs, err := i.Addrs()
@@ -31,15 +79,19 @@ func localAddresses(showIPv6 bool) {
 		}
 
 		for _, a := range addrs {
-			// Skip IPv6 addresses if the flag is not set
 			if !showIPv6 {
 				if ipnet, ok := a.(*net.IPNet); ok && ipnet.IP.To4() == nil {
 					continue
 				}
 			}
 
+			isDefaultInterface := i.Name == defaultInterface.Name
+
+			if isDefaultInterface {
+				defaultInterfaceIndex = len(rows)
+			}
+
 			rows = append(rows, []string{
-				fmt.Sprintf("%d", i.Index),
 				i.Name,
 				a.String(),
 				i.HardwareAddr.String(),
@@ -52,26 +104,29 @@ func localAddresses(showIPv6 bool) {
 		gray      = lipgloss.Color("245")
 		lightGray = lipgloss.Color("241")
 
-		headerStyle  = lipgloss.NewStyle().Foreground(purple).Bold(true).Align(lipgloss.Center)
-		cellStyle    = lipgloss.NewStyle().Padding(0, 1)
-		oddRowStyle  = cellStyle.Foreground(gray)
-		evenRowStyle = cellStyle.Foreground(lightGray)
+		headerStyle    = lipgloss.NewStyle().Foreground(purple).Bold(true).Align(lipgloss.Center)
+		cellStyle      = lipgloss.NewStyle().Padding(0, 1)
+		oddRowStyle    = cellStyle.Foreground(gray)
+		evenRowStyle   = cellStyle.Foreground(lightGray)
+		highlightStyle = cellStyle.Foreground(lipgloss.Color("10")).Bold(true)
 	)
 
 	t := table.New().
-		Border(lipgloss.NormalBorder()).
+		Border(lipgloss.RoundedBorder()).
 		BorderStyle(lipgloss.NewStyle().Foreground(purple)).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			switch {
 			case row == table.HeaderRow:
 				return headerStyle
+			case row == defaultInterfaceIndex:
+				return highlightStyle
 			case row%2 == 0:
 				return evenRowStyle
 			default:
 				return oddRowStyle
 			}
 		}).
-		Headers("Index", "Interface", "Address", "MAC").
+		Headers("Interface", "Address", "MAC").
 		Rows(rows...)
 
 	fmt.Println(t)
