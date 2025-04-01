@@ -1,17 +1,20 @@
 package main
 
 import (
-	"flag"
+	"context"
 	"fmt"
+	"log"
+	"os"
+
+	"github.com/urfave/cli/v3"
+
 	"net"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 )
 
-var showIPv6 = flag.Bool("ipv6", false, "Show IPv6 addresses")
-
-func localAddresses() {
+func localAddresses(showIPv6 bool) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		fmt.Print(fmt.Errorf("localAddresses: %+v", err.Error()))
@@ -29,7 +32,7 @@ func localAddresses() {
 
 		for _, a := range addrs {
 			// Skip IPv6 addresses if the flag is not set
-			if !*showIPv6 {
+			if !showIPv6 {
 				if ipnet, ok := a.(*net.IPNet); ok && ipnet.IP.To4() == nil {
 					continue
 				}
@@ -76,6 +79,23 @@ func localAddresses() {
 }
 
 func main() {
-	flag.Parse()
-	localAddresses()
+	cmd := &cli.Command{
+		UseShortOptionHandling: true,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "ipv6",
+				Usage:   "Show IPv6 addresses",
+				Aliases: []string{"6"},
+				Value:   false,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			localAddresses(cmd.Bool("ipv6"))
+			return nil
+		},
+	}
+
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		log.Fatal(err)
+	}
 }
