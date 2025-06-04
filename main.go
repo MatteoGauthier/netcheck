@@ -137,6 +137,7 @@ func main() {
 	cmd := &cli.Command{
 		Name:                   "netcheck",
 		Version:                "0.0.1",
+		Usage:                  "Check quickly your network configuration",
 		UseShortOptionHandling: true,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
