@@ -27,3 +27,5 @@ go.work.sum
 netcheck
 
 .DS_Store
+# Added by goreleaser init:
+dist/
