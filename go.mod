@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/jackpal/gateway v1.0.16
+	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/urfave/cli/v3 v3.1.0
 	tailscale.com v1.84.2
 )
@@ -39,7 +40,6 @@ require (
 	github.com/mdlayher/socket v0.5.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus-community/pro-bing v0.7.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
