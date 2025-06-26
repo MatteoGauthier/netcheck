@@ -18,6 +18,11 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
+type DefaultInterfaceInfo struct {
+	Name       string
+	SubnetMask string
+}
+
 func GetDefaultInterface(includeIPv6 bool) (string, error) {
 	defaultInterface, err := netmon.DefaultRouteInterface()
 	if err != nil {
@@ -27,6 +32,53 @@ func GetDefaultInterface(includeIPv6 bool) (string, error) {
 	return defaultInterface, nil
 }
 
+func getDefaultInterfaceInfo() (*DefaultInterfaceInfo, error) {
+	defaultInterfaceName, err := GetDefaultInterface(false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get default interface: %w", err)
+	}
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interfaces: %w", err)
+	}
+
+	for _, iface := range ifaces {
+		if iface.Name != defaultInterfaceName {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+				// Get the subnet mask
+				mask := ipnet.Mask
+				if len(mask) == 4 {
+					subnetMask := fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3])
+					return &DefaultInterfaceInfo{
+						Name:       defaultInterfaceName,
+						SubnetMask: subnetMask,
+					}, nil
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("subnet mask not found for default interface")
+}
+
+func getSubnetMask() (string, error) {
+	info, err := getDefaultInterfaceInfo()
+	if err != nil {
+		return "", err
+	}
+	return info.SubnetMask, nil
+}
+
 func localAddresses(showIPv6 bool, showVirtual bool) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -34,11 +86,12 @@ func localAddresses(showIPv6 bool, showVirtual bool) {
 		return
 	}
 
-	defaultInterface, err := GetDefaultInterface(showIPv6)
+	defaultInterfaceInfo, err := getDefaultInterfaceInfo()
 	if err != nil {
 		fmt.Print(fmt.Errorf("localAddresses: %+v", err.Error()))
 		return
 	}
+	defaultInterface := defaultInterfaceInfo.Name
 
 	var rows [][]string
 
@@ -125,12 +178,24 @@ func printGateway() {
 		fmt.Println(fmt.Errorf("gateway error: %w", err))
 		return
 	}
+
+	subnet, err := getSubnetMask()
+	if err != nil {
+		fmt.Println(fmt.Errorf("subnet mask error: %w", err))
+		return
+	}
+
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62")).
 		Padding(0, 1).
 		Align(lipgloss.Center)
-	fmt.Println(boxStyle.Render("Gateway: " + gw.String()))
+
+	gatewayBox := boxStyle.Render("Gateway: " + gw.String())
+	subnetBox := boxStyle.Render("Subnet Mask: " + subnet)
+
+	// Display boxes side by side
+	fmt.Println(lipgloss.JoinHorizontal(lipgloss.Top, gatewayBox, " ", subnetBox))
 }
 
 func main() {
