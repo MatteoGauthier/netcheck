@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/jackpal/gateway"
+	"github.com/urfave/cli/v3"
 	"log"
 	"netcheck/lib"
 	"os"
-
-	"github.com/jackpal/gateway"
-	"github.com/urfave/cli/v3"
+	"time"
 
 	netmon "tailscale.com/net/netmon"
 
@@ -16,11 +16,27 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/prometheus-community/pro-bing"
 )
 
 type DefaultInterfaceInfo struct {
 	Name       string
 	SubnetMask string
+}
+
+func ping(ip string) (time.Duration, error) {
+	pinger, err := probing.NewPinger(ip)
+	if err != nil {
+		return 0, err
+	}
+	pinger.Count = 3
+	err = pinger.Run()
+	if err != nil {
+		return 0, err
+	}
+	stats := pinger.Statistics()
+
+	return stats.AvgRtt.Round(time.Microsecond), nil
 }
 
 func GetDefaultInterface(includeIPv6 bool) (string, error) {
@@ -172,7 +188,7 @@ func localAddresses(showIPv6 bool, showVirtual bool) {
 
 }
 
-func printGateway() {
+func printGateway(shouldPing bool) {
 	gw, err := gateway.DiscoverGateway()
 	if err != nil {
 		fmt.Println(fmt.Errorf("gateway error: %w", err))
@@ -185,13 +201,21 @@ func printGateway() {
 		return
 	}
 
+	pingInfo := ""
+	if shouldPing {
+		pingTime, pingErr := ping(gw.String())
+		if pingErr == nil {
+			pingInfo = fmt.Sprintf(" (%s)", pingTime.String())
+		}
+	}
+
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62")).
 		Padding(0, 1).
 		Align(lipgloss.Center)
 
-	gatewayBox := boxStyle.Render("Gateway: " + gw.String())
+	gatewayBox := boxStyle.Render("Gateway: " + gw.String() + pingInfo)
 	subnetBox := boxStyle.Render("Subnet Mask: " + subnet)
 
 	// Display boxes side by side
@@ -217,10 +241,16 @@ func main() {
 				Aliases: []string{"x"},
 				Value:   false,
 			},
+			&cli.BoolFlag{
+				Name:    "ping",
+				Usage:   "Ping the gateway to check connectivity",
+				Aliases: []string{"p"},
+				Value:   false,
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			localAddresses(cmd.Bool("ipv6"), cmd.Bool("virtual"))
-			printGateway()
+			printGateway(cmd.Bool("ping"))
 			return nil
 		},
 	}
